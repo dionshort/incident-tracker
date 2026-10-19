@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db.models import ProtectedError
 from django.test import TestCase
+from django.urls import reverse
 
 from .models import Incident
 
@@ -64,3 +65,44 @@ class IncidentModelTests(TestCase):
         incident = self.make_incident()
         self.assertEqual(incident.severity, Incident.Severity.MEDIUM)
         self.assertEqual(incident.status, Incident.Status.OPEN)
+
+
+class IncidentAdminTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.creator = User.objects.create_superuser(username="user1", password="test-pass-123")
+        cls.editor = User.objects.create_superuser(username="user2", password="test-pass-123")
+
+    def form_data(self, **overrides):
+        data = {
+            "title": "500 error",
+            "description": "Checkout fails",
+            "severity": "medium",
+            "status": "open",
+            "assignee": "",
+        }
+        data.update(overrides)
+        return data
+
+    def test_reporter_set_on_create(self):
+        self.client.force_login(self.creator)
+        response = self.client.post(reverse("admin:incidents_incident_add"), self.form_data())
+        self.assertEqual(response.status_code, 302)
+        incident = Incident.objects.get()
+        self.assertEqual(incident.reporter, self.creator)
+
+    def test_reporter_unchanged_when_another_user_edits(self):
+        incident = Incident.objects.create(
+            title="500 error",
+            description="Upload fails",
+            reporter=self.creator
+        )
+        self.client.force_login(self.editor)
+        url = reverse("admin:incidents_incident_change", args=[incident.pk])
+        response = self.client.post(url, self.form_data(title="Updated title"))
+        self.assertEqual(response.status_code, 302)
+
+        incident.refresh_from_db()
+        self.assertEqual(incident.title, "Updated title")
+        self.assertEqual(incident.reporter, self.creator)
