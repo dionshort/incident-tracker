@@ -5,8 +5,13 @@ from .serializers import IncidentSerializer
 
 
 class IncidentViewSet(viewsets.ModelViewSet):
-    queryset = Incident.objects.all()
     serializer_class = IncidentSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return Incident.objects.all()
+        return Incident.objects.filter(reporter=user)
     
     def perform_create(self, serializer):
         serializer.save(reporter=self.request.user)
