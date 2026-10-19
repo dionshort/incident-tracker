@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
+from rest_framework.test import APITestCase
 
 from .models import Incident
 
@@ -106,3 +107,50 @@ class IncidentAdminTests(TestCase):
         incident.refresh_from_db()
         self.assertEqual(incident.title, "Updated title")
         self.assertEqual(incident.reporter, self.creator)
+
+
+class IncidentAPITests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(username="user", password="test-pass-123")
+        cls.other_user = User.objects.create_user(username="other_user", password="test-pass-123")
+        cls.url = reverse("incident-list")
+
+    def test_list_refused_for_logged_out_users(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+    
+    def test_create_sets_reporter_to_logged_in_user(self):
+        self.client.force_authenticate(user=self.user)
+        data = {"title": "404 error", "description": "page not found"}
+        response = self.client.post(self.url, data, format="json")
+        self.assertEqual(response.status_code, 201)
+        incident = Incident.objects.get()
+        self.assertEqual(incident.reporter, self.user)
+    
+    def test_client_cannot_set_reporter(self):
+        self.client.force_authenticate(user=self.user)
+        data = {"title": "404 error", "description": "page not found", "reporter": self.other_user.pk}
+        response = self.client.post(self.url, data, format="json")
+        self.assertEqual(response.status_code, 201)
+        incident = Incident.objects.get()
+        self.assertEqual(incident.reporter, self.user)
+    
+    def test_client_cannot_change_reporter_on_update(self):
+        incident = Incident.objects.create(title="404", description="page not found", reporter=self.user)
+        self.client.force_authenticate(user=self.user)
+        url = reverse("incident-detail", args=[incident.pk])
+        response = self.client.patch(url, {"reporter": self.other_user.pk}, format="json")
+        self.assertEqual(response.status_code, 200)
+        incident.refresh_from_db()
+        self.assertEqual(incident.reporter, self.user)
+
+    def test_create_sets_severity_to_medium(self):
+        self.client.force_authenticate(user=self.user)
+        data = {"title": "404 error", "description": "page not found"}
+        response = self.client.post(self.url, data, format="json")
+        self.assertEqual(response.status_code, 201)
+        incident = Incident.objects.get()
+        self.assertEqual(incident.severity, Incident.Severity.MEDIUM)
+        self.assertEqual(response.data["severity"], Incident.Severity.MEDIUM)
