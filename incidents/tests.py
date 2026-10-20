@@ -1,9 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
+from unittest.mock import patch
 
 from .models import Incident
 
@@ -199,3 +201,17 @@ class IncidentPermissionTests(APITestCase):
         url = reverse("admin:incidents_incident_delete", args=[self.own_incident.pk])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 403)
+
+
+class HealthCheckTests(APITestCase):
+    def test_returns_ok_when_database_is_reachable(self):
+        response = self.client.get(reverse("health"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"status": "ok"})
+
+    @patch("incidents.views.connection.cursor", side_effect=DatabaseError)
+    def test_returns_503_when_database_is_unreachable(self, mock_cursor):
+        response = self.client.get(reverse("health"))
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data, {"status": "unavailable"})
+        mock_cursor.assert_called_once()
