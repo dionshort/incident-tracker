@@ -154,3 +154,48 @@ class IncidentAPITests(APITestCase):
         incident = Incident.objects.get()
         self.assertEqual(incident.severity, Incident.Severity.MEDIUM)
         self.assertEqual(response.data["severity"], Incident.Severity.MEDIUM)
+
+
+class IncidentPermissionTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(username="user", password="test-pass-123")
+        cls.other_user = User.objects.create_user(username="other_user", password="test-pass-123")
+        cls.staff = User.objects.create_user(username="staff", password="test-pass-123", is_staff=True)
+        cls.own_incident = Incident.objects.create(title="Mine", description="x", reporter=cls.user)
+        cls.other_incident = Incident.objects.create(title="Theirs", description="y", reporter=cls.other_user)
+        cls.list_url = reverse("incident-list")
+    
+    def test_normal_user_only_sees_their_incidents(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.list_url)
+        ids = [item["id"] for item in response.data]
+        self.assertEqual(ids, [self.own_incident.pk])
+    
+    def test_normal_user_gets_404_viewing_other_user_incidents(self):
+        self.client.force_authenticate(user=self.user)
+        url = reverse("incident-detail", args=[self.other_incident.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+    
+    def test_staff_user_sees_all_incidents(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.get(self.list_url)
+        ids = [item["id"] for item in response.data]
+        self.assertCountEqual(ids, [self.own_incident.pk, self.other_incident.pk])
+    
+    def test_cannot_delete_using_api(self):
+        self.client.force_authenticate(user=self.staff)
+        url = reverse("incident-detail", args=[self.own_incident.pk])
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(Incident.objects.filter(pk=self.own_incident.pk).exists())
+    
+    def test_cannot_delete_in_admin(self):
+        User = get_user_model()
+        super_user = User.objects.create_superuser(username="superuser", password="test-pass-123")
+        self.client.force_login(user=super_user)
+        url = reverse("admin:incidents_incident_delete", args=[self.own_incident.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 403)
