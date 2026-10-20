@@ -6,6 +6,7 @@ from .serializers import IncidentSerializer
 
 class IncidentViewSet(viewsets.ModelViewSet):
     serializer_class = IncidentSerializer
+    http_method_names = ["get", "post", "patch", "head", "options"]
     
     def get_queryset(self):
         user = self.request.user
