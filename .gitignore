@@ -230,3 +230,6 @@ media/
 .terraform/
 *.tfstate
 *.tfstate.*
+
+# Scratch folder
+scratch/
