@@ -1,8 +1,10 @@
 from datetime import datetime
 from typing import Annotated
 
+from django.db.models import Count
 import msgspec
 
+from incidents.models import Incident
 from incidents.selectors import visible_incidents
 
 from .server import server
@@ -102,4 +104,34 @@ def get_incident(request, params: GetIncidentParams) -> GetIncidentResult:
             assignee=incident.assignee.username if incident.assignee is not None else None,
             updated_at=incident.updated_at,
         )
+    )
+
+
+class StatusCount(msgspec.Struct):
+    status: str
+    count: int
+
+
+class CountByStatusResult(msgspec.Struct):
+    counts: list[StatusCount]
+
+
+@server.tool(
+    description="Count the incidents the user can see, "
+    "grouped by status. Every status is included, with 0 "
+    "if it has no incidents.",
+    read_only=True,
+)
+def count_incidents_by_status(request) -> CountByStatusResult:
+    rows = (
+        visible_incidents(request.user)
+        .values("status")
+        .annotate(count=Count("id"))
+    )
+    counts_by_status = {row["status"]: row["count"] for row in rows}
+    return CountByStatusResult(
+        counts=[
+            StatusCount(status=status, count=counts_by_status.get(status, 0))
+            for status, _label in Incident.Status.choices
+        ]
     )
