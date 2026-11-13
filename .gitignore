@@ -233,3 +233,6 @@ media/
 
 # Scratch folder
 scratch/
+
+# Claude local md
+CLAUDE.local.md
