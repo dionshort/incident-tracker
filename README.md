@@ -33,8 +33,50 @@ A Django REST API for reporting and triaging production incidents, built in publ
 | `PUT`, `DELETE` | `/api/incidents/<id>/` | — | Not allowed (405) |
 | `GET` | `/health/` | Anyone | 200 if the database is reachable, 503 if not |
 
+## MCP server
+AI clients, such as Claude, can query incidents through an MCP server, using the same access rule as the API. It's built on django-mcpz and served as a single `POST` endpoint at `/mcp/`.
+
+### Tools
+- `count_open_incidents`: the number of open incidents you can see.
+- `list_open_incidents`: your open incidents, newest first, with id, title, severity and created date. Takes `limit` from 1 to 20 (default 10).
+- `get_incident`: full details of one incident by `incident_id`, or `found: false` if it doesn't exist or isn't yours.
+- `count_incidents_by_status`: how many incidents you can see in each status, including statuses with none.
+
+### Security decisions
+- Read-only tools: every tool is marked `read_only=True` and only runs queries, so an AI client can look at incidents but never change them.
+- Same access rule as the API: the API and the tools both use `visible_incidents(user)` in `incidents/selectors.py`, so users see what they reported and staff see everything. There's
+one rule to get right, not two.
+- Not found means not found: asking for another user's incident returns `found: false`, the same as an id that doesn't exist, so the tools can't be used to find out which ids exist.
+- Input checked before the tool runs: parameters are validated against each tool's schema (`limit` 1 to 20, `incident_id` at least 1). Anything outside that comes back as an error and
+never reaches the database.
+- Only the fields needed: lists return summary fields, and full details only come from `get_incident`.
+- Hashed, expiring tokens: bearer tokens are stored as SHA-256 hashes, shown once at creation, given an expiry date and can be revoked. A missing, expired or revoked token gets a 401.
+- Inactive users locked out: a token stops working as soon as its user is deactivated.
+- Fails closed: the server can't be created without an auth function, so it can't be deployed open by mistake.
+- Tool calls logged: every call is logged with the tool name and how long it took. Usernames and rejected calls aren't logged yet (see the roadmap).
+- Tested the same way as the API: each rule has a test, and each test was checked by breaking the code and watching it fail.
+
+### Connecting
+1. Create a token for a user. It's only shown once, so copy it straight away:
+```bash
+   python manage.py mcpz bearer-tokens create --user <username> --expires-in-days 30 "<token name>"
+```
+2. Load it into your shell without it appearing on screen:
+```bash
+   read -s TOKEN
+```
+3. With the server running, call a tool:
+```bash
+   curl -s -X POST http://127.0.0.1:8000/mcp/ \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_open_incidents", "arguments": {"limit": 5}}}' \
+     | python -m json.tool
+```
+   To see every tool and its parameters, send `"method": "tools/list"` instead.
+
 ## Tech stack
-- Now: Python 3.14, Django, Django REST Framework, PostgreSQL 17 (running in Docker locally), GitHub Actions
+- Now: Python 3.14, Django, Django REST Framework, django-mcpz, PostgreSQL 17 (running in Docker locally), GitHub Actions
 - Planned: Docker Compose, Bandit, pip-audit, Gitleaks, Trivy, AWS (ECR, EC2), Terraform
 
 ## Run locally
@@ -83,3 +125,7 @@ python manage.py test -v 2
 - [ ] Security scans in CI: Bandit, pip-audit, Gitleaks, Trivy
 - [ ] Deploy to AWS (ECR, EC2, OIDC, no SSH)
 - [ ] Terraform for the AWS infrastructure
+- [ ] MCP: OAuth instead of bearer tokens
+- [ ] MCP: audit log with the username on every call, including rejected ones
+- [ ] MCP: scheduled cleanup of expired tokens
+- [ ] Ruff for linting and formatting in CI

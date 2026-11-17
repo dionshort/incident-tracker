@@ -24,7 +24,10 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 
 INSTALLED_APPS = [
     'incidents.apps.IncidentsConfig',
+    'tracker_mcp.apps.TrackerMcpConfig',
     'rest_framework',
+    'django_mcpz',
+    'django_mcpz.bearer_tokens',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -133,3 +136,18 @@ REST_FRAMEWORK = {
 
 
 LOGIN_REDIRECT_URL = '/api/'
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"}
+    },
+    "loggers": {
+        "django_mcpz.calls": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+    },
+}

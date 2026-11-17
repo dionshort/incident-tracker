@@ -230,3 +230,9 @@ media/
 .terraform/
 *.tfstate
 *.tfstate.*
+
+# Scratch folder
+scratch/
+
+# Claude local md
+CLAUDE.local.md

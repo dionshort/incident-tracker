@@ -4,7 +4,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from .models import Incident
+from .selectors import visible_incidents
 from .serializers import IncidentSerializer
 
 
@@ -13,10 +13,7 @@ class IncidentViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "head", "options"]
     
     def get_queryset(self):
-        user = self.request.user
-        if user.is_staff:
-            return Incident.objects.all()
-        return Incident.objects.filter(reporter=user)
+        return visible_incidents(self.request.user)
     
     def perform_create(self, serializer):
         serializer.save(reporter=self.request.user)
