@@ -102,3 +102,10 @@ class MCPTests(TestCase):
         response = self.call_tool(self.alice_token, "list_open_incidents", arguments)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["result"]["isError"])
+    
+    def test_hidden_incident_looks_the_same_as_missing_one(self):
+        missing_id = Incident.objects.latest("pk").pk + 1
+        self.assertFalse(Incident.objects.filter(pk=missing_id).exists())
+        hidden = self.call_tool(self.alice_token, "get_incident", {"incident_id": self.bob_incident.pk})
+        missing = self.call_tool(self.alice_token, "get_incident", {"incident_id": missing_id})
+        self.assertEqual(hidden.json()["result"]["structuredContent"], missing.json()["result"]["structuredContent"])
